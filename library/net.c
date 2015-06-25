@@ -37,11 +37,15 @@
     !defined(EFI32)
 
 #if defined(POLARSSL_HAVE_IPV6)
+#if defined(WINAPI_FAMILY_PARTITION) && defined(WINAPI_PARTITION_APP) && WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)
+/* Do not redefine _WIN32_WINNT for Windows Universal Apps */
+#else
 #ifdef _WIN32_WINNT
 #undef _WIN32_WINNT
 #endif
 /* Enables getaddrinfo() & Co */
 #define _WIN32_WINNT 0x0501
+#endif
 #include <ws2tcpip.h>
 #endif
 

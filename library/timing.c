@@ -45,9 +45,10 @@
 #include <windows.h>
 #include <winbase.h>
 
-#if defined(__MINGW32__) || !defined(WINAPI_FAMILY_PARTITION)
-// Only use with x being WINAPI_PARTITION_DESKTOP to test if building on desktop
-#define WINAPI_FAMILY_PARTITION(x) 1
+#if defined(__MINGW32__) || !defined(WINAPI_FAMILY_PARTITION) || !defined(WINAPI_PARTITION_DESKTOP) || WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#define BUILD_FOR_WINDOWS_DESKTOP 1
+#else
+#include <process.h>
 #endif
 
 struct _hr_time
@@ -257,14 +258,14 @@ unsigned long get_timer( struct hr_time *val, int reset )
     return( delta );
 }
 
-DWORD WINAPI TimerProc( LPVOID uElapse )
+unsigned WINAPI TimerProc( LPVOID uElapse )
 {   
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#ifdef BUILD_FOR_WINDOWS_DESKTOP
 	Sleep((DWORD)uElapse);
 #else
 	HANDLE sleepEvent = CreateEventEx(NULL, NULL, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
 	if (!sleepEvent) return FALSE;
-	WaitForSingleObjectEx(sleepEvent, (DWORD) uElapse, FALSE);
+	WaitForSingleObjectEx(sleepEvent, PtrToUlong(uElapse), FALSE);
 #endif
     alarmed = 1; 
     return( TRUE );
@@ -272,16 +273,16 @@ DWORD WINAPI TimerProc( LPVOID uElapse )
 
 void set_alarm( int seconds )
 {
-    DWORD ThreadId;
+    unsigned int ThreadId;
 
-    alarmed = 0; 
+    alarmed = 0;
     CloseHandle( (HANDLE)_beginthreadex( NULL, 0, TimerProc,
         (LPVOID) ( seconds * 1000 ), 0, &ThreadId ) );
 }
 
 void m_sleep( int milliseconds )
 {
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+#ifdef BUILD_FOR_WINDOWS_DESKTOP
 	Sleep(milliseconds);
 #else
 	HANDLE sleepEvent = CreateEventEx(NULL, NULL, CREATE_EVENT_MANUAL_RESET, EVENT_ALL_ACCESS);
