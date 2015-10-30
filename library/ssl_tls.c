@@ -3020,30 +3020,6 @@ static int ssl_parse_record_header( ssl_context *ssl )
         return( POLARSSL_ERR_SSL_INVALID_RECORD );
     }
 
-#if defined(POLARSSL_SSL_PROTO_DTLS)
-    if( ssl->transport == SSL_TRANSPORT_DATAGRAM )
-    {
-        /* Drop unexpected ChangeCipherSpec messages */
-        if( ssl->in_msgtype == SSL_MSG_CHANGE_CIPHER_SPEC &&
-            ssl->state != SSL_CLIENT_CHANGE_CIPHER_SPEC &&
-            ssl->state != SSL_SERVER_CHANGE_CIPHER_SPEC )
-        {
-            SSL_DEBUG_MSG( 1, ( "dropping unexpected ChangeCipherSpec" ) );
-            return( POLARSSL_ERR_SSL_INVALID_RECORD );
-        }
-
-        /* Drop unexpected ApplicationData records,
-         * except at the beginning of renegotiations */
-        if( ssl->in_msgtype == SSL_MSG_APPLICATION_DATA &&
-            ssl->state != SSL_HANDSHAKE_OVER &&
-            ! ( ssl->renegotiation == SSL_RENEGOTIATION &&
-                ssl->state == SSL_SERVER_HELLO ) )
-        {
-            SSL_DEBUG_MSG( 1, ( "dropping unexpected ApplicationData" ) );
-            return( POLARSSL_ERR_SSL_INVALID_RECORD );
-        }
-    }
-#endif
 
     /* Check version */
     if( major_ver != ssl->major_ver )
@@ -3069,7 +3045,7 @@ static int ssl_parse_record_header( ssl_context *ssl )
             SSL_DEBUG_MSG( 1, ( "record from another epoch: "
                                 "expected %d, received %d",
                                  ssl->in_epoch, rec_epoch ) );
-            return( POLARSSL_ERR_SSL_INVALID_RECORD );
+            return( POLARSSL_ERR_SSL_INVALID_RECORD_EPOCH );
         }
 
 #if defined(POLARSSL_SSL_DTLS_ANTI_REPLAY)
@@ -3079,6 +3055,29 @@ static int ssl_parse_record_header( ssl_context *ssl )
             return( POLARSSL_ERR_SSL_INVALID_RECORD );
         }
 #endif
+    }
+
+    if( ssl->transport == SSL_TRANSPORT_DATAGRAM )
+    {
+        /* Drop unexpected ChangeCipherSpec messages */
+        if( ssl->in_msgtype == SSL_MSG_CHANGE_CIPHER_SPEC &&
+            ssl->state != SSL_CLIENT_CHANGE_CIPHER_SPEC &&
+            ssl->state != SSL_SERVER_CHANGE_CIPHER_SPEC )
+        {
+            SSL_DEBUG_MSG( 1, ( "dropping unexpected ChangeCipherSpec" ) );
+            return( POLARSSL_ERR_SSL_INVALID_RECORD );
+        }
+
+        /* Drop unexpected ApplicationData records,
+         * except at the beginning of renegotiations */
+        if( ssl->in_msgtype == SSL_MSG_APPLICATION_DATA &&
+            ssl->state != SSL_HANDSHAKE_OVER &&
+            ! ( ssl->renegotiation == SSL_RENEGOTIATION &&
+                ssl->state == SSL_SERVER_HELLO ) )
+        {
+            SSL_DEBUG_MSG( 1, ( "dropping unexpected ApplicationData" ) );
+            return( POLARSSL_ERR_SSL_INVALID_RECORD );
+        }
     }
 #endif /* POLARSSL_SSL_PROTO_DTLS */
 
@@ -3259,8 +3258,12 @@ read_record_header:
             /* Ignore bad record and get next one; drop the whole datagram
              * since current header cannot be trusted to find the next record
              * in current datagram */
-            ssl->next_record_offset = 0;
-            ssl->in_left = 0;
+            if (ret != POLARSSL_ERR_SSL_INVALID_RECORD_EPOCH) { /* Do not drop the whole datagramm in case of wrong epoch */
+                ssl->next_record_offset = 0;
+                ssl->in_left = 0;
+	    } else { /* just go to the next record */
+                ssl->next_record_offset = ssl->in_msglen + ssl_hdr_len( ssl );
+	    }
 
             SSL_DEBUG_MSG( 1, ( "discarding invalid record (header)" ) );
             goto read_record_header;
